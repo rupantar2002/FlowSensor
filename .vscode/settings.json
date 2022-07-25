@@ -1,0 +1,12 @@
+{
+    "idf.adapterTargetName": "esp32s2",
+    "idf.openOcdConfigs": [
+        "interface/ftdi/esp32_devkitj_v1.cfg",
+        "target/esp32s2.cfg"
+    ],
+    "files.associations": {
+        "freertos.h": "c"
+    },
+    "idf.flashType": "UART",
+    "idf.portWin": "COM6"
+}
