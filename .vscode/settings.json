@@ -5,8 +5,10 @@
         "target/esp32s2.cfg"
     ],
     "files.associations": {
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "ledc.h": "c",
+        "esp_timer.h": "c"
     },
     "idf.flashType": "UART",
-    "idf.portWin": "COM6"
+    "idf.portWin": "COM3"
 }
