@@ -12,7 +12,7 @@
 #define INTR_GPIO      GPIO_NUM_4
 #define LED_GPIO       GPIO_NUM_2
 #define DUTY_CYCLE     (1024/2)
-#define FREQUENCY       101   //HZ
+#define FREQUENCY       900   //HZ
 #define TIMER_DIVIDER  (80)    //  1 milisecond
 #define TIMER_SCALE    (TIMER_BASE_CLK / TIMER_DIVIDER) // convert counter value to seconds
 #define TIMER_INTERRUPT_INTERVAL 1000 // 1 ms
@@ -21,45 +21,15 @@
 
 // Global vars
 const char *TAG="app_main";
-volatile uint8_t state = 0;
-volatile int64_t timerCounter=0;
-volatile int64_t startTime=0;
-volatile int64_t deltaTime=0;
 
 // queue
 QueueHandle_t myQueue;
+bool queueFull=false;
 
-// int64_t array_avg(int64_t *ar){
-//     int i;
-//     uint64_t sum=0;
-//     for(i=0;i<BUFFER_SIZE;i++){
-//         sum=sum+ar[i];
-//     }
+//float get_average(uint64_t *ar);
 
-//     return (sum/BUFFER_SIZE);
-// }
+static void IRAM_ATTR gpio_interrupt_handler(void *arg){
 
-// void store_buffer(int64_t data){
-
-//     if(index1==(BUFFER_SIZE-1)){
-//         filled1=true;
-//         avg=array_avg(buffer1);
-//         filled1=false;
-//         index1=0;
-//     }
-
-//     if(index1<BUFFER_SIZE && !filled1)
-//     {
-//         buffer1[index1]=data;
-//         index1++;
-//     }
-// }
-// uint64_t g_timeDiff=0;
-// uint64_t ga_timeDiffArr[BUFFER_SIZE];
-// uint16_t g_currentIndex=0;
-// uint8_t index=0;
-
-void IRAM_ATTR gpio_interrupt_handler(void *arg){
     static uint64_t l_startTime=0;
     uint64_t l_timeDiff=0;
     uint64_t l_timeNow=esp_timer_get_time();  
@@ -72,16 +42,14 @@ void IRAM_ATTR gpio_interrupt_handler(void *arg){
         l_startTime=l_timeNow;
         // send data
         xQueueSendFromISR(myQueue,&l_timeDiff,0);
-
     }
-}
 
-
-static bool IRAM_ATTR timer_interrupt_handler(void *arg){
-    //state=!state;
-    //gpio_set_level(LED_GPIO,state);
-   // timerCounter++;
-    return pdTRUE;
+    if(xQueueIsQueueFullFromISR(myQueue)==pdTRUE){
+        queueFull=true;
+    }
+    if(xQueueIsQueueEmptyFromISR(myQueue)==pdTRUE){
+        queueFull=false;
+    }
 }
 
 void config_gpio(void){
@@ -123,43 +91,59 @@ void config_pwm(void){
 
 }
 
+float get_average(uint64_t *ar,uint16_t len){
+    float sum=0;
+    uint8_t i;
 
-void config_timer(void){
-    timer_group_t group= TIMER_GROUP_1;
-    timer_idx_t index= TIMER_1;
-    timer_config_t config= {
-        .counter_en = TIMER_PAUSE,
-        .counter_dir = TIMER_COUNT_UP,
-        .alarm_en = TIMER_ALARM_EN,
-        .auto_reload = TIMER_AUTORELOAD_EN,
-        .divider = TIMER_DIVIDER,
-    };
-
-    timer_init(group,index,&config);
-    timer_set_counter_value(group,index,0);
-    timer_set_alarm_value(group,index,TIMER_INTERRUPT_INTERVAL);
-    timer_isr_callback_add(group,index,timer_interrupt_handler,(void *) NULL,ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LEVEL2);
-    timer_start(group,index);
-
+    sum=ar[0];
+    for(i=1;i<BUFFER_SIZE;i++){
+    //ESP_LOGI(TAG,"The value is %llu aT INDEX %u",ar[i],i);
+     sum=(sum*i)+ar[i];
+     sum=sum/(i+1);
+    }
+    //ESP_LOGI(TAG,"Sum is %llu",sum);
+    return (sum);
 }
 
-//task
-void running_avg_task(void * p){
-    int64_t buffer[BUFFER_SIZE];
-    int8_t index;
-    
+uint64_t get_frequency(uint64_t counterVal){
+    uint64_t freq = (1/(counterVal / 1000000));
+    return freq;
+}
+
+void task_average(void *p){
+    uint64_t buffer[BUFFER_SIZE]={0,};
+    uint16_t index=0;
+    uint64_t val=0;
+    uint16_t arrCount=0;
+    while(1){
+
+        if(xQueueReceive(myQueue,&val,portMAX_DELAY)==pdTRUE){
+            buffer[index]=val;
+            //ESP_LOGI(TAG,"Recoved Data is %llu at index %u",buffer[index],index);
+            if(arrCount<BUFFER_SIZE)
+                arrCount++;
+            if(index<BUFFER_SIZE){
+                index++;
+            }else{
+                index=0; 
+            }
+        }else{
+            ESP_LOGI(TAG,"Failed to read queue");
+        }
+        ESP_LOGI(TAG,"TThe average value is %0.2f",get_average(buffer,arrCount));
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
 }
 
 void app_main(void)
 {
     config_gpio();
     config_pwm();
-    //config_timer();
-    myQueue=xQueueCreate(BUFFER_SIZE,sizeof(int64_t)*10);
 
-    while (1){
-        ESP_LOGI(TAG,"main Task Started");
-    }
+    myQueue=xQueueCreate(BUFFER_SIZE,(sizeof(uint64_t)*BUFFER_SIZE));
+    xTaskCreate(task_average,"Task Average",2024,NULL,1,NULL);
+
 }
 
 

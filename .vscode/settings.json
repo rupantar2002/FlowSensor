@@ -7,7 +7,8 @@
     "files.associations": {
         "freertos.h": "c",
         "ledc.h": "c",
-        "esp_timer.h": "c"
+        "esp_timer.h": "c",
+        "array": "c"
     },
     "idf.flashType": "UART",
     "idf.portWin": "COM3"
